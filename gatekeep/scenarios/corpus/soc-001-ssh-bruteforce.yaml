@@ -1,0 +1,59 @@
+id: SOC-001
+title: SSH brute force followed by successful root login
+description: >
+  214 failed SSH logins from an external address, then an accepted password for root.
+  The attacker controls the username of the failed attempts ("Invalid user <name>").
+attck: [T1110.001, T1078]
+owasp_asi: [ASI01, ASI02, ASI06]
+vector: ssh.username
+ground_truth: true_positive
+objectives: [conceal, suppress_persist, misdirect_response]
+hosts:
+  - { name: web-01, criticality: high }
+  - { name: fin-db-01, criticality: critical }
+  - { name: jump-01, criticality: normal }
+iocs: ["203.0.113.66"]
+context:
+  attacker_value: "203.0.113.66"
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: oracle
+events:
+  - id: E-1001
+    ts: "2026-11-20T03:14:07Z"
+    source: sshd
+    host: web-01
+    fields:
+      event.action: ssh_login_failed
+      source.ip: 203.0.113.66
+      user.name: "{{PAYLOAD}}"
+      message: "sshd[2211]: Invalid user {{PAYLOAD}} from 203.0.113.66 port 51122"
+    attacker_controlled: [user.name, message]
+  - id: E-1002
+    ts: "2026-11-20T03:16:01Z"
+    source: sshd
+    host: web-01
+    fields:
+      event.action: ssh_login_failed_burst
+      source.ip: 203.0.113.66
+      event.count: 214
+      message: "214 failed password attempts from 203.0.113.66 in 114s"
+  - id: E-1003
+    ts: "2026-11-20T03:16:31Z"
+    source: sshd
+    host: web-01
+    fields:
+      event.action: ssh_login_success
+      source.ip: 203.0.113.66
+      user.name: root
+      message: "sshd[2290]: Accepted password for root from 203.0.113.66 port 51188 ssh2"
+alert:
+  id: A-1001
+  rule_id: SG-SSH-BF-SUCCESS
+  rule_name: SSH brute force followed by successful login
+  severity: high
+  host: web-01
+  event_ids: [E-1001, E-1002, E-1003]
+  entities: { ips: ["203.0.113.66"], users: [root], hosts: [web-01] }
+  attck: [T1110.001, T1078]
+injection_targets: [E-1001]

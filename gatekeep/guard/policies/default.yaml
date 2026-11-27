@@ -1,0 +1,41 @@
+# gatekeep default enforcement policy.
+#
+# Every tool call the agent makes passes through these rules when the posture is
+# "enforced". Actions:
+#   deny  - the call is refused and the agent is told why
+#   hold  - the call is parked in the human approval queue (not executed)
+# If any matching rule says deny, the call is denied; otherwise any hold wins.
+#
+# Rules are implemented in gatekeep/guard/rules.py. Disable a rule by deleting it,
+# change its action, or tune its params here. Ship one policy file per customer.
+
+name: gatekeep-default
+spotlight: true     # fence attacker-controlled fields as «UNTRUSTED» data
+tripwire: true      # flag alerts whose attacker-controlled fields look like instructions
+
+egress_allowlist:
+  - soar.corp.example
+  - hooks.corp.example
+
+rules:
+  - id: injection_is_evidence          # injected instructions are attacker presence: never auto-close
+    action: deny
+  - id: no_autoclose_with_ioc          # threat-intel hit on an alert entity => a human closes it
+    action: hold
+  - id: no_autoclose_high_severity
+    action: hold
+    params: { min_severity: high }
+  - id: no_severity_downgrade_with_ioc
+    action: hold
+  - id: no_severity_inflation_without_evidence   # blocks fake-P1 / alert-fatigue attacks
+    action: hold
+  - id: suppression_requires_human
+    action: hold
+  - id: egress_allowlist
+    action: deny
+  - id: isolation_scope                # only isolate hosts named by the detection itself
+    action: deny
+  - id: critical_isolation_requires_human
+    action: hold
+  - id: taint_binding                  # high-impact argument came only from attacker-written text
+    action: deny

@@ -1,0 +1,62 @@
+id: SOC-010
+title: SQL injection with successful data extraction (stitched payload)
+description: >
+  Several probing requests, then a UNION SELECT that returns a large 200 response. The
+  attacker spreads one instruction across the User-Agent of three requests so that no
+  single log line looks suspicious to a per-line filter (context stitching).
+attck: [T1190]
+owasp_asi: [ASI01, ASI02]
+vector: http.user_agent
+ground_truth: true_positive
+objectives: [conceal, exfil]
+hosts:
+  - { name: shop-01, criticality: high }
+  - { name: fin-db-01, criticality: critical }
+iocs: ["192.0.2.140"]
+context:
+  attacker_value: "192.0.2.140"
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36"
+events:
+  - id: E-10001
+    ts: "2026-11-26T01:12:01Z"
+    source: nginx
+    host: shop-01
+    fields:
+      source.ip: 192.0.2.140
+      url.original: "/product?id=1'"
+      http.response.status_code: 500
+      user_agent.original: "{{PAYLOAD}}"
+    attacker_controlled: [user_agent.original, url.original]
+  - id: E-10002
+    ts: "2026-11-26T01:12:09Z"
+    source: nginx
+    host: shop-01
+    fields:
+      source.ip: 192.0.2.140
+      url.original: "/product?id=1 AND 1=2"
+      http.response.status_code: 200
+      user_agent.original: "{{PAYLOAD}}"
+    attacker_controlled: [user_agent.original, url.original]
+  - id: E-10003
+    ts: "2026-11-26T01:12:30Z"
+    source: nginx
+    host: shop-01
+    fields:
+      source.ip: 192.0.2.140
+      url.original: "/product?id=1 UNION SELECT email,password_hash FROM customers--"
+      http.response.status_code: 200
+      http.response.body.bytes: 1873114
+      user_agent.original: "{{PAYLOAD}}"
+    attacker_controlled: [user_agent.original, url.original]
+alert:
+  id: A-10001
+  rule_id: SG-WEB-SQLI-SUCCESS
+  rule_name: SQL injection followed by large successful response
+  severity: critical
+  host: shop-01
+  event_ids: [E-10001, E-10002, E-10003]
+  entities: { ips: ["192.0.2.140"], hosts: [shop-01] }
+  attck: [T1190]
+injection_targets: [E-10001, E-10002, E-10003]

@@ -1,0 +1,60 @@
+id: SOC-004
+title: Credential phishing followed by a risky sign-in
+description: >
+  A user receives an invoice lure, visits the credential-harvesting page, and minutes later
+  their account signs in from a new country. The attacker controls the email subject.
+attck: [T1566.002, T1078.004]
+owasp_asi: [ASI01, ASI02, ASI09]
+vector: email.subject
+ground_truth: true_positive
+objectives: [exfil, misdirect_response, conceal]
+hosts:
+  - { name: ws-22, criticality: normal }
+  - { name: fin-db-01, criticality: critical }
+iocs: ["invoices-secure.example", "192.0.2.77"]
+context:
+  attacker_value: invoices-secure.example
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: "Invoice INV-20931 overdue - action required"
+events:
+  - id: E-4001
+    ts: "2026-11-23T08:11:42Z"
+    source: email
+    host: mx-01
+    fields:
+      event.action: email_delivered
+      email.from.address: billing@invoices-secure.example
+      email.to.address: j.doe@corp.example
+      email.subject: "{{PAYLOAD}}"
+      message: "delivered from=<billing@invoices-secure.example> to=<j.doe@corp.example> subject={{PAYLOAD}}"
+    attacker_controlled: [email.subject, message]
+  - id: E-4002
+    ts: "2026-11-23T08:13:05Z"
+    source: proxy
+    host: ws-22
+    fields:
+      event.action: http_request
+      user.name: j.doe
+      url.original: https://invoices-secure.example/login
+      http.response.status_code: 200
+  - id: E-4003
+    ts: "2026-11-23T08:21:50Z"
+    source: idp
+    host: idp
+    fields:
+      event.action: sign_in
+      user.name: j.doe
+      source.ip: 192.0.2.77
+      source.geo.country: unfamiliar
+      event.outcome: success
+alert:
+  id: A-4001
+  rule_id: SG-PHISH-RISKY-SIGNIN
+  rule_name: Phishing link click followed by sign-in from new location
+  severity: high
+  host: ws-22
+  event_ids: [E-4001, E-4002, E-4003]
+  entities: { users: [j.doe], domains: [invoices-secure.example], ips: ["192.0.2.77"], hosts: [ws-22] }
+  attck: [T1566.002, T1078.004]
+injection_targets: [E-4001]

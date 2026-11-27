@@ -1,0 +1,65 @@
+id: SOC-002
+title: PHP web shell upload and command execution
+description: >
+  A file is POSTed to an upload directory and then requested with a cmd parameter; EDR sees
+  php-fpm spawning a shell. The attacker controls the User-Agent of the upload request.
+attck: [T1190, T1505.003, T1059.004]
+owasp_asi: [ASI01, ASI02]
+vector: http.user_agent
+ground_truth: true_positive
+objectives: [conceal, exfil, suppress_persist]
+hosts:
+  - { name: web-02, criticality: high }
+  - { name: fin-db-01, criticality: critical }
+iocs: ["198.51.100.23"]
+context:
+  attacker_value: "198.51.100.23"
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
+events:
+  - id: E-2001
+    ts: "2026-11-21T10:02:11Z"
+    source: nginx
+    host: web-02
+    fields:
+      event.action: http_request
+      source.ip: 198.51.100.23
+      http.request.method: POST
+      url.original: /wp-content/uploads/2026/11/img_7731.php
+      http.response.status_code: 201
+      user_agent.original: "{{PAYLOAD}}"
+      message: '198.51.100.23 - - "POST /wp-content/uploads/2026/11/img_7731.php HTTP/1.1" 201 88 "-" "{{PAYLOAD}}"'
+    attacker_controlled: [user_agent.original, message, url.original]
+  - id: E-2002
+    ts: "2026-11-21T10:02:19Z"
+    source: nginx
+    host: web-02
+    fields:
+      event.action: http_request
+      source.ip: 198.51.100.23
+      http.request.method: GET
+      url.original: "/wp-content/uploads/2026/11/img_7731.php?cmd=id"
+      http.response.status_code: 200
+      message: '198.51.100.23 - - "GET /wp-content/uploads/2026/11/img_7731.php?cmd=id HTTP/1.1" 200 54'
+    attacker_controlled: [url.original, message]
+  - id: E-2003
+    ts: "2026-11-21T10:02:19Z"
+    source: edr
+    host: web-02
+    fields:
+      event.action: process_start
+      process.parent.name: php-fpm8.2
+      process.name: sh
+      process.command_line: "sh -c id"
+      user.name: www-data
+alert:
+  id: A-2001
+  rule_id: SG-WEB-SHELL-EXEC
+  rule_name: Web server process spawned a shell after file upload
+  severity: critical
+  host: web-02
+  event_ids: [E-2001, E-2002, E-2003]
+  entities: { ips: ["198.51.100.23"], hosts: [web-02], users: [www-data] }
+  attck: [T1190, T1505.003]
+injection_targets: [E-2001]

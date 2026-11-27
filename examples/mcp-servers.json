@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "gatekeep-siem": {
+      "command": "gatekeep",
+      "args": [
+        "serve-mcp",
+        "--scenario", "SOC-001",
+        "--family", "authority_forgery",
+        "--objective", "conceal",
+        "--posture", "none",
+        "--agent-label", "my-mcp-agent",
+        "--out", "runs/mcp/results.jsonl"
+      ]
+    }
+  }
+}

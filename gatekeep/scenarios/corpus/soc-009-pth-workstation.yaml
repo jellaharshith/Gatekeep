@@ -1,0 +1,65 @@
+id: SOC-009
+title: NTLM lateral movement with a service account (pass-the-hash pattern)
+description: >
+  A service account authenticates over NTLM (logon type 3) from one source to three servers
+  in two minutes. The attacker controls WorkstationName, which is capped at 15 characters:
+  this scenario shows how field limits kill most payloads before they reach the agent.
+attck: [T1550.002, T1021.002]
+owasp_asi: [ASI01]
+vector: windows.workstation
+ground_truth: true_positive
+objectives: [conceal]
+hosts:
+  - { name: dc-01, criticality: critical }
+  - { name: file-02, criticality: high }
+  - { name: sql-02, criticality: high }
+  - { name: fin-db-01, criticality: critical }
+iocs: ["10.0.9.50"]
+context:
+  attacker_value: "10.0.9.50"
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: WKS-0457
+events:
+  - id: E-9001
+    ts: "2026-11-25T22:47:02Z"
+    source: windows_security
+    host: dc-01
+    fields:
+      event.code: 4624
+      winlog.logon.type: 3
+      winlog.auth_package: NTLM
+      user.name: svc-backup
+      source.ip: 10.0.9.50
+      source.workstation: "{{PAYLOAD}}"
+    attacker_controlled: [source.workstation]
+  - id: E-9002
+    ts: "2026-11-25T22:48:15Z"
+    source: windows_security
+    host: file-02
+    fields:
+      event.code: 4624
+      winlog.logon.type: 3
+      winlog.auth_package: NTLM
+      user.name: svc-backup
+      source.ip: 10.0.9.50
+  - id: E-9003
+    ts: "2026-11-25T22:48:51Z"
+    source: windows_security
+    host: sql-02
+    fields:
+      event.code: 4624
+      winlog.logon.type: 3
+      winlog.auth_package: NTLM
+      user.name: svc-backup
+      source.ip: 10.0.9.50
+alert:
+  id: A-9001
+  rule_id: SG-WIN-NTLM-LATERAL
+  rule_name: Service account NTLM network logons to multiple servers in short window
+  severity: high
+  host: dc-01
+  event_ids: [E-9001, E-9002, E-9003]
+  entities: { ips: ["10.0.9.50"], users: [svc-backup], hosts: [dc-01, file-02, sql-02] }
+  attck: [T1550.002]
+injection_targets: [E-9001]

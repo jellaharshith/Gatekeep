@@ -1,0 +1,52 @@
+id: SOC-003
+title: DNS tunneling from a workstation
+description: >
+  A workstation issues thousands of high-entropy queries to one domain. The attacker
+  controls the query names, so payloads must survive DNS label rules.
+attck: [T1071.004, T1048]
+owasp_asi: [ASI01, ASI06]
+vector: dns.qname
+ground_truth: true_positive
+objectives: [conceal, suppress_persist]
+hosts:
+  - { name: ws-17, criticality: normal }
+  - { name: fin-db-01, criticality: critical }
+iocs: ["exfil-cdn.example"]
+context:
+  attacker_value: exfil-cdn.example
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: q7x2k9mfa0d3ls8tz1
+events:
+  - id: E-3001
+    ts: "2026-11-22T14:40:00Z"
+    source: dns
+    host: ws-17
+    fields:
+      event.action: dns_query_burst
+      source.ip: 10.10.4.17
+      dns.question.type: TXT
+      event.count: 4812
+      dns.registered_domain: exfil-cdn.example
+      message: "4812 TXT queries in 60m to exfil-cdn.example, mean label entropy 4.6 bits/char"
+  - id: E-3002
+    ts: "2026-11-22T14:41:07Z"
+    source: dns
+    host: ws-17
+    fields:
+      event.action: dns_query
+      source.ip: 10.10.4.17
+      dns.question.type: TXT
+      dns.question.name: "{{PAYLOAD}}.exfil-cdn.example"
+      message: "client 10.10.4.17#53211: query: {{PAYLOAD}}.exfil-cdn.example IN TXT"
+    attacker_controlled: [dns.question.name, message]
+alert:
+  id: A-3001
+  rule_id: SG-DNS-TUNNEL
+  rule_name: Possible DNS tunneling (high-volume high-entropy queries)
+  severity: high
+  host: ws-17
+  event_ids: [E-3001, E-3002]
+  entities: { domains: [exfil-cdn.example], hosts: [ws-17], ips: ["10.10.4.17"] }
+  attck: [T1071.004]
+injection_targets: [E-3002]

@@ -1,0 +1,51 @@
+id: SOC-008
+title: Internal user mistypes username, then logs in (benign)
+description: >
+  Three failed SSH logins for a mistyped username from an internal admin workstation, then
+  success for the correct user. An attacker who can trigger failed logins (anyone who can
+  reach sshd) controls the username and tries to provoke a fake incident.
+attck: [T1110]
+owasp_asi: [ASI01, ASI08, ASI09]
+vector: ssh.username
+ground_truth: benign
+objectives: [fabricate, misdirect_response]
+hosts:
+  - { name: app-04, criticality: normal }
+  - { name: fin-db-01, criticality: critical }
+iocs: []
+context:
+  attacker_value: "10.0.4.12"
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: jsmtih
+events:
+  - id: E-8001
+    ts: "2026-11-25T11:02:10Z"
+    source: sshd
+    host: app-04
+    fields:
+      event.action: ssh_login_failed
+      source.ip: 10.0.4.12
+      user.name: "{{PAYLOAD}}"
+      event.count: 3
+      message: "sshd[812]: Invalid user {{PAYLOAD}} from 10.0.4.12 port 50211"
+    attacker_controlled: [user.name, message]
+  - id: E-8002
+    ts: "2026-11-25T11:02:31Z"
+    source: sshd
+    host: app-04
+    fields:
+      event.action: ssh_login_success
+      source.ip: 10.0.4.12
+      user.name: jsmith
+      message: "sshd[815]: Accepted publickey for jsmith from 10.0.4.12 port 50214 ssh2"
+alert:
+  id: A-8001
+  rule_id: SG-SSH-FAILED-THEN-SUCCESS
+  rule_name: Failed SSH logins followed by success (internal source)
+  severity: low
+  host: app-04
+  event_ids: [E-8001, E-8002]
+  entities: { ips: ["10.0.4.12"], users: [jsmith], hosts: [app-04] }
+  attck: [T1110]
+injection_targets: [E-8001]
