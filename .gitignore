@@ -9,3 +9,5 @@ dist/
 runs/
 .env
 *.log
+# personal planning notes (kept locally, not published)
+docs/PROJECT_PLAN.md

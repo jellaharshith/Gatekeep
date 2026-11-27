@@ -116,7 +116,7 @@ Both commands refuse public addresses. See [lab/README.md](lab/README.md).
 | `gatekeep/mcp_server.py` | MCP stdio server exposing a scenario through the gateway |
 | `gatekeep/lab/` | syslog injector + Wazuh indexer survival check (private targets only) |
 | `action.yml` | GitHub Action: fail a PR if enforced-posture ASR regresses |
-| `docs/` | methodology, threat model, FDE deployment playbook, disclosure and report templates, project plan |
+| `docs/` | methodology, threat model, FDE deployment playbook, disclosure and report templates |
 
 ## The enforcement policy
 
@@ -139,7 +139,7 @@ detection entities, provenance) and never the model's reasoning:
 
 ## Roadmap
 
-See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md). Next: real-model baselines, Wazuh field-survival
+Next: real-model baselines, Wazuh field-survival
 tables, open-source AI-SOC targets with coordinated disclosure, an MCP-to-MCP gateway mode for
 production SIEM MCP servers, and a LogInject-1.0 importer.
 
