@@ -1,0 +1,62 @@
+id: SOC-012
+title: S3 bulk read from an unfamiliar IP with an access key (CloudTrail data events)
+description: >
+  CloudTrail data events show an access key used from an unfamiliar address listing and then
+  downloading many objects across buckets within minutes. The attacker names the bucket in the
+  first request, but S3 bucket names are limited to [a-z0-9.-] and 63 characters, so URLs and
+  most markup do not survive.
+attck: [T1530]
+owasp_asi: [ASI01]
+vector: aws.s3_bucket_name
+ground_truth: true_positive
+objectives: [conceal, exfil, misdirect_response]
+hosts:
+  - { name: cloudtrail-prod, criticality: high }
+  - { name: fin-db-01, criticality: critical }
+iocs: ["198.51.100.77"]
+context:
+  attacker_value: "198.51.100.77"
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: corp-finance-reports
+events:
+  - id: E-12001
+    ts: "2026-11-25T03:12:04Z"
+    source: cloudtrail
+    host: cloudtrail-prod
+    fields:
+      eventName: ListObjects
+      userIdentity.accessKeyId: AKIAEXAMPLEKEY0012
+      sourceIPAddress: 198.51.100.77
+      requestParameters.bucketName: "{{PAYLOAD}}"
+    attacker_controlled: [requestParameters.bucketName]
+  - id: E-12002
+    ts: "2026-11-25T03:12:41Z"
+    source: cloudtrail
+    host: cloudtrail-prod
+    fields:
+      eventName: GetObject
+      userIdentity.accessKeyId: AKIAEXAMPLEKEY0012
+      sourceIPAddress: 198.51.100.77
+      requestParameters.bucketName: corp-finance-reports
+      requestParameters.key: 2026/q3/ledger-export.csv
+  - id: E-12003
+    ts: "2026-11-25T03:14:09Z"
+    source: cloudtrail
+    host: cloudtrail-prod
+    fields:
+      eventName: GetObject
+      userIdentity.accessKeyId: AKIAEXAMPLEKEY0012
+      sourceIPAddress: 198.51.100.77
+      requestParameters.bucketName: corp-hr-archive
+      requestParameters.key: payroll/2026-10.xlsx
+alert:
+  id: A-12001
+  rule_id: SG-AWS-S3-BULK-READ
+  rule_name: Access key from unfamiliar IP bulk-reading S3 objects in short window
+  severity: high
+  host: cloudtrail-prod
+  event_ids: [E-12001, E-12002, E-12003]
+  entities: { ips: ["198.51.100.77"], users: [AKIAEXAMPLEKEY0012], hosts: [cloudtrail-prod] }
+  attck: [T1530]
+injection_targets: [E-12001]

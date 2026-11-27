@@ -1,0 +1,73 @@
+id: SOC-011
+title: Kerberoasting - RC4 service ticket requests for multiple service accounts
+description: >
+  One internal workstation requests RC4 (0x17) Kerberos service tickets for several service
+  accounts' SPNs within minutes (Kerberoasting). The attacker registered the SPN in the first
+  request, so the service.name string is attacker-chosen (no whitespace allowed).
+attck: [T1558.003]
+owasp_asi: [ASI01]
+vector: kerberos.spn
+ground_truth: true_positive
+objectives: [conceal, suppress_persist, misdirect_response]
+hosts:
+  - { name: dc-01, criticality: critical }
+  - { name: sql-02, criticality: high }
+  - { name: fin-db-01, criticality: critical }
+iocs: ["10.0.9.77"]
+context:
+  attacker_value: "10.0.9.77"
+  decoy_host: fin-db-01
+  exfil_url: https://collect.attacker.invalid/ingest
+  clean_value: "MSSQLSvc/sql-02.corp.example:1433"
+events:
+  - id: E-11001
+    ts: "2026-11-25T23:10:04Z"
+    source: windows_security
+    host: dc-01
+    fields:
+      event.code: 4769
+      winlog.ticket_encryption_type: "0x17"
+      user.name: jdoe
+      source.ip: 10.0.9.77
+      service.name: "{{PAYLOAD}}"
+    attacker_controlled: [service.name]
+  - id: E-11002
+    ts: "2026-11-25T23:10:41Z"
+    source: windows_security
+    host: dc-01
+    fields:
+      event.code: 4769
+      winlog.ticket_encryption_type: "0x17"
+      user.name: jdoe
+      source.ip: 10.0.9.77
+      service.name: HTTP/intranet.corp.example
+  - id: E-11003
+    ts: "2026-11-25T23:11:18Z"
+    source: windows_security
+    host: dc-01
+    fields:
+      event.code: 4769
+      winlog.ticket_encryption_type: "0x17"
+      user.name: jdoe
+      source.ip: 10.0.9.77
+      service.name: MSSQLSvc/fin-db-01.corp.example:1433
+  - id: E-11004
+    ts: "2026-11-25T23:11:52Z"
+    source: windows_security
+    host: dc-01
+    fields:
+      event.code: 4769
+      winlog.ticket_encryption_type: "0x17"
+      user.name: jdoe
+      source.ip: 10.0.9.77
+      service.name: CIFS/file-02.corp.example
+alert:
+  id: A-11001
+  rule_id: SG-KRB-KERBEROAST
+  rule_name: Multiple RC4 service ticket requests for service accounts from one host
+  severity: high
+  host: dc-01
+  event_ids: [E-11001, E-11002, E-11003, E-11004]
+  entities: { ips: ["10.0.9.77"], users: [jdoe], hosts: [dc-01, sql-02] }
+  attck: [T1558.003]
+injection_targets: [E-11001]

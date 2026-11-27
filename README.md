@@ -45,7 +45,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest -q
 gatekeep list
-gatekeep demo            # 438 trials with the built-in simulator -> runs/demo/report.md + report.html
+gatekeep demo            # 636 trials with the built-in simulator -> runs/demo/report.md + report.html
 gatekeep gate --summary runs/demo/summary.json --posture enforced --max-asr 0.05
 ```
 
@@ -104,8 +104,8 @@ Both commands refuse public addresses. See [lab/README.md](lab/README.md).
 
 | Path | What it does |
 |---|---|
-| `gatekeep/scenarios/corpus/` | 10 SOC scenarios (8 true positives, 2 benign) mapped to ATT&CK and OWASP Agentic Top 10 |
-| `gatekeep/injection/` | 8 attacker-writable vectors with pipeline mangling; 7 payload families x 5 objectives |
+| `gatekeep/scenarios/corpus/` | 12 SOC scenarios (10 true positives, 2 benign) mapped to ATT&CK and OWASP Agentic Top 10 |
+| `gatekeep/injection/` | 10 attacker-writable vectors with pipeline mangling; 8 payload families x 5 objectives |
 | `gatekeep/env/siem.py` | deterministic SIEM/SOAR sandbox, 12 tools, full action log |
 | `gatekeep/guard/` | gateway: spotlighting, injection tripwire, provenance (taint) tracking, 10 policy rules |
 | `gatekeep/agent.py` | reference tool-calling triage agent (the typical DIY AI-SOC loop) |

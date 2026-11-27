@@ -112,6 +112,10 @@ class SimulatedBackend(LLMBackend):
             p = 0.85
         elif re.search(r"</?(sys|system|data|log entry)>", t):
             p = 0.7
+        elif re.search(r"handoff|previous shift", t):
+            # Simulator assumption, not a finding: persona/handoff text is modelled as
+            # fairly persuasive (0.8) but less than explicit authorization claims.
+            p = 0.8
         elif stitched:
             p = 0.7
         elif decoded:

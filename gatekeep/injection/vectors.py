@@ -33,6 +33,13 @@ def _dns_label(s: str) -> str:
     return ".".join(labels)
 
 
+def _s3_bucket(s: str) -> str:
+    # S3 bucket names: 3-63 chars, lowercase letters, digits, dots and hyphens only.
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9.-]", "-", s)
+    return re.sub(r"-{2,}", "-", s).strip("-.")
+
+
 def _windows_filename(s: str) -> str:
     s = _single_line(s)
     return re.sub(r'[<>:"/\\|?*]', "", s)
@@ -86,6 +93,18 @@ VECTORS: dict[str, Vector] = {
             "process.command_line", "process.command_line",
             "Process command line captured by EDR/Sysmon (an attacker can append a comment).",
             8191, _single_line, False,
+        ),
+        Vector(
+            "kerberos.spn", "service.name",
+            "Kerberos service principal name in a TGS request (event 4769). An attacker who can "
+            "register an SPN chooses the string; whitespace is not allowed. ~255 chars.",
+            255, _no_whitespace, False,
+        ),
+        Vector(
+            "aws.s3_bucket_name", "requestParameters.bucketName",
+            "S3 bucket name in a CloudTrail data event: 3-63 chars, [a-z0-9.-] only, so ':' '/' "
+            "and '_' do not survive.",
+            63, _s3_bucket, True,
         ),
         Vector(
             "windows.workstation", "source.workstation",

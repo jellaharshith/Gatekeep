@@ -21,9 +21,9 @@ Do not start a phase until the previous DoD is met.
 
 - [ ] Read every module. Write a 1-paragraph docstring in your own words at the top of each file
       you change, so you can defend every design choice in an interview.
-- [ ] Add 2 scenarios of your own from your AI-SOC LAB experience (for example Kerberoasting with an
+- [x] Add 2 scenarios of your own from your AI-SOC LAB experience (for example Kerberoasting with an
       attacker-chosen SPN; an S3 bucket name in a CloudTrail event).
-- [ ] Add 1 payload family you invent (for example "analyst-persona": text that impersonates a
+- [x] Add 1 payload family you invent (for example "analyst-persona": text that impersonates a
       prior analyst note). Add a test for it.
 
 **DoD:** 12+ scenarios, 8+ families, tests green, and you can explain the taint-binding rule on a whiteboard.

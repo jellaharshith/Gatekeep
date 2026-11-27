@@ -51,7 +51,7 @@ or with a close queued for human approval; and there are no harmful side effects
 - **Simulator**: `sim:*` encodes assumptions. It is for pipeline testing only.
 - **Sandbox realism**: real SIEMs enrich, deduplicate and correlate. Phase 3 of the plan measures real ingestion.
 - **Reference agent**: one prompt and loop. Real products differ, which is why MCP mode exists.
-- **Corpus size**: 10 hand-built scenarios. Grow it and publish it.
+- **Corpus size**: 12 hand-built scenarios. Grow it and publish it.
 - **Policy overfitting**: the default policy was written alongside the corpus. Test it on scenarios
   written after the policy was frozen, and report residual successes honestly.
 - **Temperature**: default 0. Report repeats at temperature > 0 if you claim robustness.
