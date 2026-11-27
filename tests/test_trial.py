@@ -46,3 +46,54 @@ def test_mcp_handle(scenarios, policy):
     assert srv.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     assert srv.result().trial_id == "SOC-001|external-mcp-agent|enforced|clean|-|r0"
     json.dumps(srv.result().model_dump(mode="json"))
+
+
+def _srv(scenarios, policy):
+    return SandboxMCPServer(scenarios["SOC-001"], Posture.ENFORCED, policy)
+
+
+def test_mcp_envelopes_and_calls(scenarios, policy):
+    srv = _srv(scenarios, policy)
+    r = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "X"}})
+    assert list(r) == ["jsonrpc", "id", "result"] and r["id"] == 1
+    assert r["result"]["protocolVersion"] == "X"
+    assert r["result"]["capabilities"] == {"tools": {"listChanged": False}}
+    assert "A-1001" in r["result"]["instructions"]
+    r = srv.handle({"jsonrpc": "2.0", "id": 2, "method": "initialize"})
+    assert r["result"]["protocolVersion"] == "2025-06-18"
+    assert srv.calls == 0
+    assert srv.handle({"jsonrpc": "2.0", "id": 3, "method": "ping"}) == {"jsonrpc": "2.0", "id": 3, "result": {}}
+    r = srv.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/list"})
+    assert all(set(t) == {"name", "description", "inputSchema"} for t in r["result"]["tools"])
+    assert srv.calls == 0
+    r = srv.handle({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "no_such_tool"}})
+    assert srv.calls == 1
+    assert r["result"]["content"][0]["type"] == "text"
+    assert r["result"]["isError"] is ("error" in json.loads(r["result"]["content"][0]["text"]))
+    r = srv.handle({"jsonrpc": "2.0", "id": 6, "method": "nope"})
+    assert r == {"jsonrpc": "2.0", "id": 6, "error": {"code": -32601, "message": "method not found: nope"}}
+    assert srv.handle({"jsonrpc": "2.0", "method": "nope"}) is None
+    assert srv.handle({"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "x"}}) is None
+    assert srv.calls == 1
+
+
+def test_mcp_tool_exception_is_internal_error(scenarios, policy):
+    srv = _srv(scenarios, policy)
+
+    def boom(name, args):
+        raise RuntimeError("kaboom")
+    srv.gateway.call = boom
+    r = srv.handle({"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "x"}})
+    assert r == {"jsonrpc": "2.0", "id": 9, "error": {"code": -32603, "message": "kaboom"}}
+    assert srv.calls == 1
+
+
+def test_mcp_serve_parse_error(scenarios, policy):
+    import io
+    srv = _srv(scenarios, policy)
+    out = io.StringIO()
+    srv.serve(io.StringIO('{bad json\n\n{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+                          '{"jsonrpc":"2.0","method":"notifications/initialized"}\n'), out)
+    lines = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert lines == [{"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}},
+                     {"jsonrpc": "2.0", "id": 1, "result": {}}]

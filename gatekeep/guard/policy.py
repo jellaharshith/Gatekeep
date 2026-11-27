@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 import yaml
 
+from .rules import RULES
+
 DEFAULT_POLICY = Path(__file__).parent / "policies" / "default.yaml"
 
 
@@ -27,8 +29,6 @@ class Policy:
 
     @classmethod
     def load(cls, path: Optional[str | Path] = None) -> "Policy":
-        from .rules import RULES  # local import avoids a cycle
-
         data = yaml.safe_load(Path(path or DEFAULT_POLICY).read_text())
         rules = []
         for r in data.get("rules", []):

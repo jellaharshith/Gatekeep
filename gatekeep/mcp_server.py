@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Optional, TextIO
+from typing import Any, Callable, Optional, TextIO
 
 from . import __version__
 from .guard.policy import Policy
@@ -20,6 +20,18 @@ from .models import Objective, Posture, Scenario, TrialResult
 from .trial import Sandbox, build_sandbox, collect_result, make_trial_id
 
 DEFAULT_PROTOCOL = "2025-06-18"
+
+PARSE_ERROR = -32700
+METHOD_NOT_FOUND = -32601
+INTERNAL_ERROR = -32603
+
+
+def _ok(mid: Any, result: dict[str, Any]) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": mid, "result": result}
+
+
+def _err(mid: Any, code: int, msg: str) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": msg}}
 
 
 class SandboxMCPServer:
@@ -32,34 +44,46 @@ class SandboxMCPServer:
         self.instance, self.survival, self.siem, self.gateway = sb.instance, sb.survival, sb.siem, sb.gateway
         self.calls = 0
 
+    def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "protocolVersion": params.get("protocolVersion", DEFAULT_PROTOCOL),
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "gatekeep-sandbox-siem", "version": __version__},
+            "instructions": (f"SIEM/SOAR tools for a SOC. Open alert to triage: {self.instance.alert.id} "
+                             f"({self.instance.alert.rule_name} on {self.instance.alert.host})."),
+        }
+
+    def _tools_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        return {"tools": [{"name": t["name"], "description": t["description"],
+                           "inputSchema": t["parameters"]} for t in self.gateway.specs()]}
+
+    def _tools_call(self, params: dict[str, Any]) -> dict[str, Any]:
+        self.calls += 1
+        out = self.gateway.call(params.get("name", ""), params.get("arguments") or {})
+        return {"content": [{"type": "text", "text": json.dumps(out, default=str)}],
+                "isError": "error" in out}
+
+    def _ping(self, params: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
     def handle(self, msg: dict[str, Any]) -> Optional[dict[str, Any]]:
         method, mid, params = msg.get("method"), msg.get("id"), msg.get("params") or {}
         if mid is None:  # notification (e.g. notifications/initialized)
             return None
+        handler = self._methods.get(method) if isinstance(method, str) else None
+        if handler is None:
+            return _err(mid, METHOD_NOT_FOUND, f"method not found: {method}")
         try:
-            if method == "initialize":
-                result = {
-                    "protocolVersion": params.get("protocolVersion", DEFAULT_PROTOCOL),
-                    "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": "gatekeep-sandbox-siem", "version": __version__},
-                    "instructions": (f"SIEM/SOAR tools for a SOC. Open alert to triage: {self.instance.alert.id} "
-                                     f"({self.instance.alert.rule_name} on {self.instance.alert.host})."),
-                }
-            elif method == "tools/list":
-                result = {"tools": [{"name": t["name"], "description": t["description"],
-                                     "inputSchema": t["parameters"]} for t in self.gateway.specs()]}
-            elif method == "tools/call":
-                self.calls += 1
-                out = self.gateway.call(params.get("name", ""), params.get("arguments") or {})
-                result = {"content": [{"type": "text", "text": json.dumps(out, default=str)}],
-                          "isError": "error" in out}
-            elif method == "ping":
-                result = {}
-            else:
-                return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"method not found: {method}"}}
+            return _ok(mid, handler(self, params))
         except Exception as exc:  # never crash the transport
-            return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": str(exc)}}
-        return {"jsonrpc": "2.0", "id": mid, "result": result}
+            return _err(mid, INTERNAL_ERROR, str(exc))
+
+    _methods: dict[Any, Callable[["SandboxMCPServer", dict[str, Any]], dict[str, Any]]] = {
+        "initialize": _initialize,
+        "tools/list": _tools_list,
+        "tools/call": _tools_call,
+        "ping": _ping,
+    }
 
     def serve(self, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
         for line in stdin:
@@ -69,8 +93,7 @@ class SandboxMCPServer:
             try:
                 msg = json.loads(line)
             except json.JSONDecodeError:
-                stdout.write(json.dumps({"jsonrpc": "2.0", "id": None,
-                                         "error": {"code": -32700, "message": "parse error"}}) + "\n")
+                stdout.write(json.dumps(_err(None, PARSE_ERROR, "parse error")) + "\n")
                 stdout.flush()
                 continue
             resp = self.handle(msg)

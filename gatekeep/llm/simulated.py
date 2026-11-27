@@ -18,6 +18,7 @@ import random
 import re
 from typing import Any, Optional
 
+from ..guard.gateway import CLOSE, OPEN
 from ..models import ToolCall
 from ..textnorm import strip_zw
 from .base import LLMBackend, LLMResponse
@@ -129,7 +130,7 @@ class SimulatedBackend(LLMBackend):
         decoded = stitched = False
         parts: dict[int, str] = {}
         for raw in strings:
-            pre = strip_zw(raw.replace("«UNTRUSTED»", " ").replace("«/UNTRUSTED»", " "))
+            pre = strip_zw(raw.replace(OPEN, " ").replace(CLOSE, " "))
             for d in _decode_b64(pre):
                 texts.append(_light(d))
                 decoded = True
