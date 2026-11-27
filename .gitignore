@@ -11,3 +11,4 @@ runs/
 *.log
 # personal planning notes (kept locally, not published)
 docs/PROJECT_PLAN.md
+CLAUDE.md
