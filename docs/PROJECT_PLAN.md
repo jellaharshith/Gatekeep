@@ -7,15 +7,20 @@ customer stack, integrations, explaining risk to a CISO).
 Budget assumption: about 10-12 hours a week for 10 weeks. Each phase has a definition of done (DoD).
 Do not start a phase until the previous DoD is met.
 
+**Status (2026-11-26):** Phase 0 done except pinning the repo. Phase 1 code work is merged (PR #1:
+12 scenarios, 10 vectors, 8 families, 48 tests, CI green); the docstring and whiteboard items remain.
+Next: Phase 2.
+
 ---
 
 ## Phase 0: Repo live (day 1)
 
-- [ ] Create a GitHub repo `gatekeep`, push this code, enable Actions.
-- [ ] `pip install -e ".[dev]" && pytest -q && gatekeep demo` locally.
-- [ ] Pin the repo on your profile. Add topics: `ai-security`, `prompt-injection`, `soc`, `owasp-agentic`.
+- [x] Create a GitHub repo `gatekeep`, push this code, enable Actions. (jellaharshith/Gatekeep, public)
+- [x] `pip install -e ".[dev]" && pytest -q && gatekeep demo` locally.
+- [ ] Pin the repo on your profile.
+- [x] Add topics: `ai-security`, `prompt-injection`, `soc`, `owasp-agentic`.
 
-**DoD:** CI is green on GitHub and `runs/demo/report.html` opens.
+**DoD:** CI is green on GitHub and `runs/demo/report.html` opens. (CI is green; pin the repo to close the phase.)
 
 ## Phase 1: Understand and own the code (week 1)
 
@@ -27,6 +32,7 @@ Do not start a phase until the previous DoD is met.
       prior analyst note). Add a test for it.
 
 **DoD:** 12+ scenarios, 8+ families, tests green, and you can explain the taint-binding rule on a whiteboard.
+Met so far: 12 scenarios, 8 families, tests green. Still yours: the docstrings and the whiteboard explanation.
 
 ## Phase 2: Real-model baseline (weeks 2-3)
 
