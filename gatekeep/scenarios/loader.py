@@ -46,9 +46,8 @@ def _validate(scenarios: list[Scenario]) -> None:
             ev = next(e for e in s.events if e.id == t)
             if not any(PLACEHOLDER in str(v) for v in ev.fields.values()):
                 raise ValueError(f"{s.id}: event {t} has no {PLACEHOLDER} placeholder")
-        for key in ("clean_value",):
-            if key not in s.context:
-                raise ValueError(f"{s.id}: context.{key} is required")
+        if "clean_value" not in s.context:
+            raise ValueError(f"{s.id}: context.clean_value is required")
 
 
 def _substitute(value, text: str):

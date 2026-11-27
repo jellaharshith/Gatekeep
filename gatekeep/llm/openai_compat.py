@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import Any
 
-import httpx
-
 from ..models import ToolCall
+from ._http import post_json
 from .base import LLMBackend, LLMResponse
 
 
@@ -32,7 +30,10 @@ class OpenAICompatBackend(LLMBackend):
             "tool_choice": "auto",
         }
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        data = self._post(payload, headers)
+        data = post_json(f"{self.base_url}/chat/completions", payload, headers, timeout=self.timeout,
+                         retries=self.retries, name=self.name,
+                         retry_statuses=(429, 500, 502, 503, 504),
+                         raise_for_status=True, fail_fast_below=429)
         msg = data["choices"][0]["message"]
         calls = []
         for i, tc in enumerate(msg.get("tool_calls") or []):
@@ -44,20 +45,3 @@ class OpenAICompatBackend(LLMBackend):
                 args = {"_unparsed": raw}
             calls.append(ToolCall(id=tc.get("id") or f"call_{i}", name=fn.get("name", ""), arguments=args))
         return LLMResponse(content=msg.get("content"), tool_calls=calls)
-
-    def _post(self, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
-        last: Exception | None = None
-        for attempt in range(self.retries):
-            try:
-                r = httpx.post(f"{self.base_url}/chat/completions", json=payload, headers=headers,
-                               timeout=self.timeout)
-                if r.status_code in (429, 500, 502, 503, 504):
-                    raise httpx.HTTPStatusError(f"retryable {r.status_code}", request=r.request, response=r)
-                r.raise_for_status()
-                return r.json()
-            except (httpx.HTTPStatusError, httpx.TransportError) as exc:
-                last = exc
-                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 429:
-                    raise RuntimeError(f"{self.name}: {exc.response.status_code} {exc.response.text[:300]}")
-                time.sleep(2 ** attempt)
-        raise RuntimeError(f"{self.name}: request failed after {self.retries} attempts: {last}")

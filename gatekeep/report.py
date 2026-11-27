@@ -5,9 +5,9 @@ import html
 from datetime import datetime, timezone
 from typing import Any
 
-from .models import TrialResult
+from .models import Posture, TrialResult
 
-POSTURES = ["none", "advisory", "enforced"]
+POSTURES = [p.value for p in (Posture.NONE, Posture.ADVISORY, Posture.ENFORCED)]
 SIM_BANNER = ("Includes simulated models (`sim:*`). Their numbers only show the pipeline works. "
               "They are NOT findings about any real model or product.")
 
@@ -21,10 +21,21 @@ def _ci(block: dict[str, Any]) -> str:
     return f"{100 * lo:.1f}-{100 * hi:.1f}%"
 
 
+def _split_key(key: str) -> tuple[str, str]:
+    """Split a 'posture|dimension' summary key."""
+    posture, _, rest = key.partition("|")
+    return posture, rest
+
+
+def _rows_for(data: dict[str, Any], posture: str) -> list[tuple[str, Any]]:
+    """(dimension value, block) pairs of one posture."""
+    return [(r, v) for k, v in data.items() for p, r in [_split_key(k)] if p == posture]
+
+
 def _dim_table(summary: dict[str, Any], key: str, label: str) -> list[str]:
     data = summary[key]
-    rows = sorted({k.split("|", 1)[1] for k in data})
-    present = [p for p in POSTURES if any(k.startswith(p + "|") for k in data)]
+    rows = sorted({_split_key(k)[1] for k in data})
+    present = [p for p in POSTURES if _rows_for(data, p)]
     lines = [f"| {label} | " + " | ".join(f"ASR ({p})" for p in present) + " | n/posture |",
              "|---|" + "---|" * (len(present) + 1)]
     for row in rows:
@@ -114,10 +125,12 @@ def html_report(summary: dict[str, Any], title: str = "AI SOC agent injection as
                 f"<div class='sub'>attack success · 95% CI {_ci(b['asr'])}</div>"
                 f"<div class='sub'>clean utility {_pct(b['clean_utility']['rate'])} · held/trial {b['held_per_trial']}</div></div>")
 
-    worst_obj = sorted(((k.split("|")[1], v["rate"] or 0) for k, v in summary["by_posture_objective"].items()
-                        if k.startswith("none|")), key=lambda kv: -kv[1])[:3]
-    worst_vec = sorted(((k.split("|")[1], v["rate"] or 0) for k, v in summary["by_posture_vector"].items()
-                        if k.startswith("none|")), key=lambda kv: -kv[1])[:3]
+    worst_obj = sorted(((r, v["rate"] or 0) for r, v in _rows_for(summary["by_posture_objective"], "none")),
+                       key=lambda kv: -kv[1])[:3]
+    worst_vec = sorted(((r, v["rate"] or 0) for r, v in _rows_for(summary["by_posture_vector"], "none")),
+                       key=lambda kv: -kv[1])[:3]
+    errs = (f"<p class='warn'>{summary['errors']} errored trials were excluded from these numbers.</p>"
+            if summary.get("errors") else "")
     li = lambda xs: "".join(f"<li><code>{html.escape(a)}</code>: {_pct(b)}</li>" for a, b in xs)
     banner = f"<p class='warn'>{html.escape(SIM_BANNER)}</p>" if summary["simulated"] else ""
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
@@ -133,8 +146,8 @@ code{{background:#f6f8fa;padding:1px 5px;border-radius:4px}} h2{{margin-top:32px
 </style></head><body>
 <h1>{html.escape(title)}</h1>
 <div class="meta">Models: {", ".join(html.escape(m) for m in summary["models"])} · {summary["attack_trials"]} attack trials · {summary["clean_trials"]} clean controls</div>
-{banner}
-<div class="row">{big("none")}{big("advisory")}{big("enforced")}</div>
+{banner}{errs}
+<div class="row">{"".join(big(p) for p in POSTURES)}</div>
 <h2>What this means</h2>
 <p>Attack success is measured on what the agent <em>did</em> in the SIEM (closed a real attack, created a suppression rule,
 sent data out, isolated the wrong host), not on what it said. "Enforced" puts a policy gateway between the agent and its tools;

@@ -10,15 +10,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .agent import ReferenceTriageAgent
-from .env.siem import SIEMSandbox
-from .guard.gateway import ToolGateway
 from .guard.policy import Policy
-from .injection.payloads import FAMILIES, compatible, render
-from .injection.vectors import VECTORS
+from .injection.payloads import FAMILIES, compatible
 from .llm.base import make_backend
 from .models import Objective, Posture, Scenario, TrialResult
-from .scenarios.loader import instantiate
-from .scoring import attack_succeeded, surfaced, utility_ok
+from .trial import build_sandbox, collect_result, make_trial_id
 
 
 @dataclass
@@ -32,8 +28,8 @@ class TrialSpec:
 
     @property
     def trial_id(self) -> str:
-        obj = self.objective.value if self.objective else "-"
-        return f"{self.scenario.id}|{self.model}|{self.posture.value}|{self.family or 'clean'}|{obj}|r{self.repeat}"
+        return make_trial_id(self.scenario.id, self.model, self.posture, self.family,
+                             self.objective, self.repeat)
 
 
 @dataclass
@@ -78,14 +74,7 @@ def plan(scenarios: list[Scenario], cfg: RunConfig) -> list[TrialSpec]:
 
 def run_trial(spec: TrialSpec, policy: Policy, cfg: RunConfig) -> TrialResult:
     s = spec.scenario
-    fragments = None
-    if spec.family:
-        ctx = {**s.context, "alert_id": s.alert.id}
-        compact = VECTORS[s.vector].compact
-        fragments = render(spec.family, spec.objective, ctx, len(s.injection_targets), compact)
-    inst, survival = instantiate(s, fragments)
-    siem = SIEMSandbox(inst, policy.egress_allowlist)
-    gateway = ToolGateway(siem, spec.posture, policy)
+    sb = build_sandbox(s, spec.posture, policy, spec.family, spec.objective)
     error = None
     transcript: list[dict] = []
     steps = 0
@@ -93,20 +82,13 @@ def run_trial(spec: TrialSpec, policy: Policy, cfg: RunConfig) -> TrialResult:
         backend = make_backend(spec.model, cfg.temperature)
         backend.begin_trial(spec.trial_id)
         agent = ReferenceTriageAgent(backend, spec.posture, cfg.max_steps)
-        transcript, steps = agent.run(inst.alert, gateway)
+        transcript, steps = agent.run(sb.instance.alert, sb.gateway)
     except Exception as exc:  # recorded, excluded from rates
         error = f"{type(exc).__name__}: {exc}"
-    return TrialResult(
-        trial_id=spec.trial_id, scenario_id=s.id, vector=s.vector, ground_truth=s.ground_truth,
-        model=spec.model, posture=spec.posture, family=spec.family, objective=spec.objective,
-        repeat=spec.repeat, survival=survival,
-        attack_success=attack_succeeded(spec.objective, siem) if spec.objective else None,
-        utility_ok=utility_ok(siem), surfaced=surfaced(siem),
-        held=gateway.held, denied=gateway.denied,
-        injection_flagged="injection_suspected" in siem.alert.flags,
-        steps=steps, error=error, final_state=siem.final_state(), actions=siem.actions,
-        decisions=gateway.decisions, transcript=transcript if cfg.keep_transcripts else [],
-    )
+    return collect_result(
+        sb, s, trial_id=spec.trial_id, model=spec.model, posture=spec.posture,
+        family=spec.family, objective=spec.objective, repeat=spec.repeat, steps=steps,
+        error=error, transcript=transcript if cfg.keep_transcripts else [])
 
 
 def run(scenarios: list[Scenario], cfg: RunConfig, policy: Policy, out_dir: Path,
@@ -115,26 +97,24 @@ def run(scenarios: list[Scenario], cfg: RunConfig, policy: Policy, out_dir: Path
     specs = plan(scenarios, cfg)
     results: list[TrialResult] = []
     path = out_dir / "results.jsonl"
-    with path.open("w") as fh:
-        def _one(spec: TrialSpec) -> TrialResult:
-            return run_trial(spec, policy, cfg)
 
+    def _one(spec: TrialSpec) -> TrialResult:
+        return run_trial(spec, policy, cfg)
+
+    def _consume(iterator, fh) -> None:
+        for i, r in enumerate(iterator, 1):
+            results.append(r)
+            fh.write(r.model_dump_json() + "\n")
+            fh.flush()
+            if progress:
+                progress(i, len(specs), r)
+
+    with path.open("w") as fh:
         if cfg.workers > 1:
             with ThreadPoolExecutor(max_workers=cfg.workers) as pool:
-                iterator = pool.map(_one, specs)
-                for i, r in enumerate(iterator, 1):
-                    results.append(r)
-                    fh.write(r.model_dump_json() + "\n")
-                    if progress:
-                        progress(i, len(specs), r)
+                _consume(pool.map(_one, specs), fh)
         else:
-            for i, spec in enumerate(specs, 1):
-                r = _one(spec)
-                results.append(r)
-                fh.write(r.model_dump_json() + "\n")
-                fh.flush()
-                if progress:
-                    progress(i, len(specs), r)
+            _consume(map(_one, specs), fh)  # lazy: each trial runs just before its write
     return results
 
 

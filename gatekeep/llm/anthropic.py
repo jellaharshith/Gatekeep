@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import Any
 
-import httpx
-
 from ..models import ToolCall
+from ._http import post_json
 from .base import LLMBackend, LLMResponse
 
 API_URL = "https://api.anthropic.com/v1/messages"
@@ -66,21 +64,8 @@ class AnthropicBackend(LLMBackend):
         }
         headers = {"x-api-key": self.api_key, "anthropic-version": "2023-06-01",
                    "content-type": "application/json"}
-        last: Exception | None = None
-        for attempt in range(self.retries):
-            try:
-                r = httpx.post(API_URL, json=payload, headers=headers, timeout=self.timeout)
-                if r.status_code in (429, 500, 502, 503, 529):
-                    raise httpx.HTTPStatusError(f"retryable {r.status_code}", request=r.request, response=r)
-                if r.status_code >= 400:
-                    raise RuntimeError(f"{self.name}: {r.status_code} {r.text[:300]}")
-                data = r.json()
-                break
-            except (httpx.HTTPStatusError, httpx.TransportError) as exc:
-                last = exc
-                time.sleep(2 ** attempt)
-        else:
-            raise RuntimeError(f"{self.name}: request failed after {self.retries} attempts: {last}")
+        data = post_json(API_URL, payload, headers, timeout=self.timeout, retries=self.retries,
+                         name=self.name, retry_statuses=(429, 500, 502, 503, 529))
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         calls = [ToolCall(id=b["id"], name=b["name"], arguments=b.get("input") or {})
                  for b in data.get("content", []) if b.get("type") == "tool_use"]

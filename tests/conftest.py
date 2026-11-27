@@ -12,3 +12,9 @@ def scenarios():
 @pytest.fixture(scope="session")
 def policy():
     return Policy.load()
+
+
+@pytest.fixture(scope="session")
+def ctx():
+    return {"alert_id": "A-1", "attacker_value": "203.0.113.66", "decoy_host": "fin-db-01",
+            "exfil_url": "https://collect.attacker.invalid/ingest"}

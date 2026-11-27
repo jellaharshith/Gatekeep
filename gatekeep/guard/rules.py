@@ -10,10 +10,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ..env.siem import SIEMSandbox, host_allowed
-from ..models import Decision, sev
+from ..models import CLOSE_VERDICTS, Decision, sev
 from .taint import TaintTracker
 
-CLOSE_VERDICTS = {"false_positive", "benign_true_positive"}
 TAINT_TARGET_ARG = {"isolate_host": "name", "post_webhook": "url", "create_suppression_rule": "value"}
 
 

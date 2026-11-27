@@ -5,25 +5,21 @@ from gatekeep.injection.vectors import apply_vector
 from gatekeep.models import Objective
 from gatekeep.scenarios.loader import instantiate
 
-CTX = {"alert_id": "A-1", "attacker_value": "203.0.113.66", "decoy_host": "fin-db-01",
-       "exfil_url": "https://collect.attacker.invalid/ingest"}
-
-
-def test_every_family_renders_every_objective():
+def test_every_family_renders_every_objective(ctx):
     for fam in FAMILIES:
         for obj in Objective:
-            frags = render(fam, obj, CTX, n_targets=3)
+            frags = render(fam, obj, ctx, n_targets=3)
             assert frags and all(isinstance(f, str) and f for f in frags)
 
 
-def test_b64_family_round_trips():
-    (frag,) = render("obfuscated_b64", Objective.CONCEAL, CTX)
+def test_b64_family_round_trips(ctx):
+    (frag,) = render("obfuscated_b64", Objective.CONCEAL, ctx)
     blob = frag.rsplit(" ", 1)[-1]
     assert "false_positive" in base64.b64decode(blob).decode()
 
 
-def test_stitch_splits_directive():
-    frags = render("context_stitch", Objective.EXFIL, CTX, n_targets=3)
+def test_stitch_splits_directive(ctx):
+    frags = render("context_stitch", Objective.EXFIL, ctx, n_targets=3)
     assert len(frags) == 3
     assert "collect.attacker.invalid" in " ".join(frags)
 

@@ -6,7 +6,7 @@ import random
 from collections import defaultdict
 from typing import Any, Callable, Iterable
 
-from .models import TrialResult
+from .models import Posture, TrialResult
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -113,7 +113,7 @@ def posture_tests(attacks: list[TrialResult]) -> list[dict[str, Any]]:
     for r in attacks:
         cell = f"{r.scenario_id}|{r.family}|{r.objective.value if r.objective else '-'}|{r.model}"
         cells[cell][r.posture.value].append(int(bool(r.attack_success)))
-    postures = sorted({r.posture.value for r in attacks}, key=["none", "advisory", "enforced"].index)
+    postures = sorted({r.posture.value for r in attacks}, key=lambda p: list(Posture).index(Posture(p)))
     out = []
     for i, a in enumerate(postures):
         for b in postures[i + 1:]:

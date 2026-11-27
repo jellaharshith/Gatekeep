@@ -12,12 +12,12 @@ import re
 from typing import Iterable
 
 from ..models import Alert, Event
+from ..textnorm import strip_zw
 
-_ZW = re.compile("[​‌‍⁠﻿]")
 
 
 def _norm(s: str) -> str:
-    return _ZW.sub("", str(s)).strip().lower()
+    return strip_zw(s).strip().lower()
 
 
 class TaintTracker:

@@ -15,14 +15,9 @@ from pathlib import Path
 from typing import Any, Optional, TextIO
 
 from . import __version__
-from .env.siem import SIEMSandbox
-from .guard.gateway import ToolGateway
 from .guard.policy import Policy
-from .injection.payloads import render
-from .injection.vectors import VECTORS
 from .models import Objective, Posture, Scenario, TrialResult
-from .scenarios.loader import instantiate
-from .scoring import attack_succeeded, surfaced, utility_ok
+from .trial import Sandbox, build_sandbox, collect_result, make_trial_id
 
 DEFAULT_PROTOCOL = "2025-06-18"
 
@@ -33,16 +28,8 @@ class SandboxMCPServer:
                  agent_label: str = "external-mcp-agent"):
         self.scenario, self.posture, self.family, self.objective = scenario, Posture(posture), family, objective
         self.agent_label = agent_label
-        fragments = None
-        if family:
-            if objective is None:
-                raise ValueError("--objective is required with --family")
-            ctx = {**scenario.context, "alert_id": scenario.alert.id}
-            fragments = render(family, objective, ctx, len(scenario.injection_targets),
-                               VECTORS[scenario.vector].compact)
-        self.instance, self.survival = instantiate(scenario, fragments)
-        self.siem = SIEMSandbox(self.instance, policy.egress_allowlist)
-        self.gateway = ToolGateway(self.siem, self.posture, policy)
+        sb = build_sandbox(scenario, self.posture, policy, family, objective)
+        self.instance, self.survival, self.siem, self.gateway = sb.instance, sb.survival, sb.siem, sb.gateway
         self.calls = 0
 
     def handle(self, msg: dict[str, Any]) -> Optional[dict[str, Any]]:
@@ -92,19 +79,10 @@ class SandboxMCPServer:
                 stdout.flush()
 
     def result(self) -> TrialResult:
-        obj = self.objective.value if self.objective else "-"
-        return TrialResult(
-            trial_id=f"{self.scenario.id}|{self.agent_label}|{self.posture.value}|{self.family or 'clean'}|{obj}|r0",
-            scenario_id=self.scenario.id, vector=self.scenario.vector, ground_truth=self.scenario.ground_truth,
-            model=self.agent_label, posture=self.posture, family=self.family, objective=self.objective,
-            survival=self.survival,
-            attack_success=attack_succeeded(self.objective, self.siem) if self.objective else None,
-            utility_ok=utility_ok(self.siem), surfaced=surfaced(self.siem),
-            held=self.gateway.held, denied=self.gateway.denied,
-            injection_flagged="injection_suspected" in self.siem.alert.flags,
-            steps=self.calls, final_state=self.siem.final_state(), actions=self.siem.actions,
-            decisions=self.gateway.decisions,
-        )
+        sb = Sandbox(self.instance, self.survival, self.siem, self.gateway)
+        tid = make_trial_id(self.scenario.id, self.agent_label, self.posture, self.family, self.objective, 0)
+        return collect_result(sb, self.scenario, trial_id=tid, model=self.agent_label, posture=self.posture,
+                              family=self.family, objective=self.objective, steps=self.calls)
 
 
 def run_server(server: SandboxMCPServer, out: Optional[Path]) -> TrialResult:

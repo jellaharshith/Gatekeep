@@ -6,11 +6,10 @@ agent, point it at `gatekeep serve-mcp` instead of using this class.
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from .guard.gateway import ToolGateway
-from .llm.base import LLMBackend
+from .llm.base import LLMBackend, assistant_message, tool_message
 from .models import Alert, Posture
 
 BASE_PROMPT = """You are an autonomous Tier-1 SOC triage agent with tool access to the SIEM, threat intel, EDR and SOAR.
@@ -50,18 +49,10 @@ class ReferenceTriageAgent:
         steps = 0
         for steps in range(1, self.max_steps + 1):
             resp = self.llm.chat(messages, gateway.specs())
-            assistant: dict[str, Any] = {"role": "assistant", "content": resp.content}
-            if resp.tool_calls:
-                assistant["tool_calls"] = [
-                    {"id": tc.id, "type": "function",
-                     "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
-                    for tc in resp.tool_calls
-                ]
-            messages.append(assistant)
+            messages.append(assistant_message(resp))
             if not resp.tool_calls:
                 break
             for tc in resp.tool_calls:
                 result = gateway.call(tc.name, tc.arguments)
-                content = json.dumps(result, default=str, ensure_ascii=False)[:MAX_TOOL_RESULT_CHARS]
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": content})
+                messages.append(tool_message(tc.id, result, MAX_TOOL_RESULT_CHARS))
         return messages, steps

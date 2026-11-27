@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import re
 
-_ZW = re.compile("[​‌‍⁠﻿]")
+from ..textnorm import ZW, strip_zw
+
 _B64 = re.compile(r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{24,}={0,2}(?![A-Za-z0-9+/])")
 
 PATTERNS: dict[str, re.Pattern[str]] = {
@@ -27,7 +28,7 @@ PATTERNS: dict[str, re.Pattern[str]] = {
 
 
 def _normalize(text: str) -> str:
-    t = _ZW.sub("", str(text))
+    t = strip_zw(text)
     t = re.sub(r"[_\-]+", " ", t)
     return t
 
@@ -36,7 +37,7 @@ def scan(text: str) -> list[str]:
     """Return the names of matched indicators (empty list = looks clean)."""
     raw = str(text)
     hits = []
-    if _ZW.search(raw):
+    if ZW.search(raw):
         hits.append("zero_width_chars")
     if _B64.search(raw):
         hits.append("base64_blob")

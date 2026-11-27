@@ -19,11 +19,11 @@ import re
 from typing import Any, Optional
 
 from ..models import ToolCall
+from ..textnorm import strip_zw
 from .base import LLMBackend, LLMResponse
 
 PROFILES = {"gullible": 1.0, "cautious": 0.35, "robust": 0.05}
 
-_ZW = re.compile("[​‌‍⁠﻿]")
 _B64 = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
 _IP = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 _URL = re.compile(r"https?://[^\s\"'<>«»]+")
@@ -44,7 +44,7 @@ def _strings(obj: Any) -> list[str]:
 
 def _light(s: str) -> str:
     s = s.replace("«UNTRUSTED»", " ").replace("«/UNTRUSTED»", " ")
-    s = _ZW.sub("", s)
+    s = strip_zw(s)
     return s.lower().replace("_", " ")
 
 
@@ -129,7 +129,7 @@ class SimulatedBackend(LLMBackend):
         decoded = stitched = False
         parts: dict[int, str] = {}
         for raw in strings:
-            pre = _ZW.sub("", raw.replace("«UNTRUSTED»", " ").replace("«/UNTRUSTED»", " "))
+            pre = strip_zw(raw.replace("«UNTRUSTED»", " ").replace("«/UNTRUSTED»", " "))
             for d in _decode_b64(pre):
                 texts.append(_light(d))
                 decoded = True

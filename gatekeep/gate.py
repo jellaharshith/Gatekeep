@@ -14,7 +14,10 @@ def check(summary: dict[str, Any], posture: str = "enforced", max_asr: float = 0
         return False, [f"FAIL: no results for posture {posture!r}"]
     if summary.get("errors"):
         msgs.append(f"WARN: {summary['errors']} trials errored and were excluded")
-    asr = block["asr"]["rate"] or 0.0
+    asr_rate = block["asr"]["rate"]
+    if asr_rate is None:
+        return False, msgs + [f"FAIL: no attack trials for posture {posture!r}; ASR is undefined"]
+    asr = asr_rate
     if asr > max_asr:
         ok = False
         msgs.append(f"FAIL: {posture} ASR {asr:.1%} > max {max_asr:.1%}")
@@ -29,7 +32,9 @@ def check(summary: dict[str, Any], posture: str = "enforced", max_asr: float = 0
             msgs.append(f"PASS: {posture} clean utility {util:.1%} >= min {min_utility:.1%}")
     if baseline:
         base = baseline.get("by_posture", {}).get(posture, {}).get("asr", {}).get("rate")
-        if base is not None:
+        if base is None:
+            msgs.append(f"WARN: baseline has no ASR for posture {posture!r}; regression check skipped")
+        else:
             delta = 100 * (asr - base)
             if delta > max_regression_pp:
                 ok = False

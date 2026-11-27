@@ -4,8 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 import secrets
+import os
 import sys
 from pathlib import Path
+
+import httpx
+import yaml
 
 from . import __version__
 from .gate import check as gate_check
@@ -24,10 +28,11 @@ def _csv(s: str | None) -> list[str] | None:
 
 
 def _write_reports(results, out_dir: Path) -> dict:
+    out_dir.mkdir(parents=True, exist_ok=True)
     summary = summarize(results)
     write_summary(summary, out_dir)
-    (out_dir / "report.md").write_text(markdown(summary, results))
-    (out_dir / "report.html").write_text(html_report(summary))
+    (out_dir / "report.md").write_text(markdown(summary, results), encoding="utf-8")
+    (out_dir / "report.html").write_text(html_report(summary), encoding="utf-8")
     return summary
 
 
@@ -77,10 +82,12 @@ def cmd_run(args) -> int:
     if not scenarios:
         print("no scenarios selected", file=sys.stderr)
         return 2
-    if args.families:
-        bad = [f for f in _csv(args.families) if f not in FAMILIES]
+    for flag, vals, valid in (("families", _csv(args.families), set(FAMILIES)),
+                              ("postures", _csv(args.postures), {p.value for p in Posture}),
+                              ("objectives", _csv(args.objectives), {o.value for o in Objective})):
+        bad = [v for v in vals or [] if v not in valid]
         if bad:
-            print(f"unknown families: {bad}", file=sys.stderr)
+            print(f"unknown {flag}: {bad}; valid: {sorted(valid)}", file=sys.stderr)
             return 2
     cfg = _config(args)
     policy = Policy.load(args.policy)
@@ -97,12 +104,6 @@ def cmd_run(args) -> int:
     return 0
 
 
-def cmd_demo(args) -> int:
-    args.models = args.models or "sim:gullible"
-    args.postures = args.postures or "none,advisory,enforced"
-    return cmd_run(args)
-
-
 def cmd_report(args) -> int:
     results = load_results(Path(args.results))
     out_dir = Path(args.out or Path(args.results).parent)
@@ -113,8 +114,12 @@ def cmd_report(args) -> int:
 
 
 def cmd_gate(args) -> int:
-    summary = json.loads(Path(args.summary).read_text())
-    baseline = json.loads(Path(args.baseline).read_text()) if args.baseline else None
+    try:
+        summary = json.loads(Path(args.summary).read_text(encoding="utf-8"))
+        baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8")) if args.baseline else None
+    except (OSError, ValueError) as exc:
+        print(f"error: cannot read summary/baseline: {exc}", file=sys.stderr)
+        return 2
     ok, msgs = gate_check(summary, args.posture, args.max_asr, args.min_utility, baseline, args.max_regression_pp)
     print("\n".join(msgs))
     return 0 if ok else 1
@@ -148,24 +153,14 @@ def cmd_serve_mcp(args) -> int:
 
 
 def cmd_lab_inject(args) -> int:
-    from .lab.syslog_inject import ScopeError, build_line, send
+    from .lab.syslog_inject import ScopeError, build_line, build_payload, send
 
     if not args.i_own_this_lab:
         print("refusing: pass --i-own-this-lab to confirm the target is your own lab", file=sys.stderr)
         return 2
     marker = f"SG{secrets.token_hex(3).upper()}"
-    if args.family:
-        ctx = {"alert_id": args.alert_id, "attacker_value": args.src_ip, "decoy_host": args.decoy_host,
-               "exfil_url": "https://collect.attacker.invalid/ingest"}
-        compact = args.vector in ("ssh.username", "dns.qname")
-        payload = " ".join(render(args.family, Objective(args.objective), ctx, 1, compact))
-    else:
-        payload = args.payload or "gatekeep-survival-probe the quick brown fox"
-    payload = f"{marker} {payload}"
-    if args.vector == "ssh.username":
-        payload = payload.replace(" ", "_")
-    if args.vector == "dns.qname":
-        payload = apply_vector("dns.qname", payload)[0] + ".lab.example"
+    payload = build_payload(args.vector, marker, args.family, args.objective, args.alert_id,
+                            args.src_ip, args.decoy_host, args.payload)
     line = build_line(args.vector, payload, args.src_ip, args.hostname)
     try:
         n = send(args.target, args.port, [line] * args.count, args.proto)
@@ -225,7 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_run)
     sp = sub.add_parser("demo", help="offline run with the simulator (no API key needed)")
     add_run_args(sp)
-    sp.set_defaults(fn=cmd_demo, out="runs/demo")
+    sp.set_defaults(fn=cmd_run, out="runs/demo", models="sim:gullible", postures="none,advisory,enforced")
 
     sp = sub.add_parser("report", help="rebuild reports from results.jsonl")
     sp.add_argument("results")
@@ -290,7 +285,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except KeyboardInterrupt:
+        raise
+    except Exception as exc:
+        from .lab.syslog_inject import ScopeError
+
+        if isinstance(exc, ScopeError):
+            print(f"refusing: {exc}", file=sys.stderr)
+            return 2
+        if isinstance(exc, (ValueError, OSError, httpx.HTTPError, yaml.YAMLError)):
+            if os.environ.get("GATEKEEP_DEBUG"):
+                raise
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        raise
 
 
 if __name__ == "__main__":

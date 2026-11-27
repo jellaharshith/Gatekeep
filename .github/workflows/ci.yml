@@ -11,15 +11,15 @@ jobs:
       matrix:
         python-version: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
       - run: gatekeep demo --out runs/demo
       - run: gatekeep gate --summary runs/demo/summary.json --posture enforced --max-asr 0.05 --min-utility 0.9
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: gatekeep-demo-report-py${{ matrix.python-version }}

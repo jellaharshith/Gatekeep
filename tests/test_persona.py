@@ -3,22 +3,18 @@ from gatekeep.injection.payloads import FAMILIES, render
 from gatekeep.models import Objective, Posture
 from gatekeep.runner import RunConfig, TrialSpec, run_trial
 
-CTX = {"alert_id": "A-1", "attacker_value": "203.0.113.66", "decoy_host": "fin-db-01",
-       "exfil_url": "https://collect.attacker.invalid/ingest"}
-
-
-def test_family_registered_and_renders_every_objective():
+def test_family_registered_and_renders_every_objective(ctx):
     assert "analyst_persona" in FAMILIES
     for obj in Objective:
-        frags = render("analyst_persona", obj, CTX, n_targets=3)
+        frags = render("analyst_persona", obj, ctx, n_targets=3)
         assert frags and all(isinstance(f, str) and f for f in frags)
 
 
-def test_compact_template_has_no_whitespace():
+def test_compact_template_has_no_whitespace(ctx):
     fam = FAMILIES["analyst_persona"]
     assert "{d}" in fam.long and "{d}" in fam.short
     for obj in Objective:
-        (frag,) = render("analyst_persona", obj, CTX, compact=True)
+        (frag,) = render("analyst_persona", obj, ctx, compact=True)
         prefix = frag.split(":", 1)[0] + ":"
         assert prefix == "t2-handoff:"
         assert not any(c.isspace() for c in fam.short.replace("{d}", ""))
@@ -31,8 +27,8 @@ def test_wrapper_alone_evades_tripwires():
     assert scan(wrapper) == []
 
 
-def test_directive_inside_payload_still_flagged():
-    (frag,) = render("analyst_persona", Objective.CONCEAL, CTX)
+def test_directive_inside_payload_still_flagged(ctx):
+    (frag,) = render("analyst_persona", Objective.CONCEAL, ctx)
     assert "verdict_directive" in scan(frag)
 
 

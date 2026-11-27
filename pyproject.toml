@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,13 +12,13 @@ license = { text = "MIT" }
 authors = [{ name = "Harshith" }]
 keywords = ["ai-security", "prompt-injection", "soc", "llm-agents", "red-team", "owasp-agentic"]
 dependencies = [
-  "pydantic>=2.5",
-  "pyyaml>=6.0",
-  "httpx>=0.25",
+  "pydantic>=2.12",
+  "pyyaml>=6.0.2",
+  "httpx>=0.28",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=8.4"]
 
 [project.scripts]
 gatekeep = "gatekeep.cli:main"

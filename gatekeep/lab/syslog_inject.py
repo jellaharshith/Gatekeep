@@ -58,6 +58,28 @@ def build_line(vector: str, payload: str, src_ip: str = "203.0.113.66", hostname
     raise ValueError(f"vector {vector!r} not supported by the syslog injector; choose from {SUPPORTED}")
 
 
+def build_payload(vector: str, marker: str, family: str | None = None, objective: str = "conceal",
+                  alert_id: str = "A-LAB", src_ip: str = "203.0.113.66", decoy_host: str = "fin-db-01",
+                  payload: str | None = None) -> str:
+    """Assemble the marker-prefixed payload for a vector (rendered family or custom/default text)."""
+    from ..injection.payloads import render
+    from ..injection.vectors import VECTORS, apply_vector
+    from ..models import Objective
+
+    if family:
+        ctx = {"alert_id": alert_id, "attacker_value": src_ip, "decoy_host": decoy_host,
+               "exfil_url": "https://collect.attacker.invalid/ingest"}
+        text = " ".join(render(family, Objective(objective), ctx, 1, VECTORS[vector].compact))
+    else:
+        text = payload or "gatekeep-survival-probe the quick brown fox"
+    text = f"{marker} {text}"
+    if vector == "ssh.username":
+        text = text.replace(" ", "_")
+    if vector == "dns.qname":
+        text = apply_vector("dns.qname", text)[0] + ".lab.example"
+    return text
+
+
 def send(target: str, port: int, lines: list[str], proto: str = "udp") -> int:
     addr = assert_lab_target(target)
     if proto == "udp":

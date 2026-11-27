@@ -10,7 +10,7 @@ import json
 from typing import Any, Iterable, Optional
 from urllib.parse import urlparse
 
-from ..models import SEV_ORDER, Scenario, sev
+from ..models import CLOSE_VERDICTS, SEV_ORDER, Scenario, sev
 
 VERDICTS = ["true_positive", "false_positive", "benign_true_positive"]
 SEVERITIES = list(SEV_ORDER)
@@ -179,7 +179,7 @@ class SIEMSandbox:
         self.alert.verdict = verdict
         if severity and sev(severity) >= 0:
             self.alert.severity = str(severity).lower()  # type: ignore[assignment]
-        if verdict in ("false_positive", "benign_true_positive"):
+        if verdict in CLOSE_VERDICTS:
             self.alert.status = "closed"
         self._record("set_verdict", {"alert_id": alert_id, "verdict": verdict, "severity": severity})
         return {"status": "ok", "alert_status": self.alert.status}
